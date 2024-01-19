@@ -1,5 +1,10 @@
 import streamlit as st
 import pandas as pd
+from sklearn.model_selection import train_test_split
+from utils import DropFeatures, OneHotEncodingNames, OrdinalFeature, MinMaxWithFeatNames
+from sklearn.pipeline import Pipeline
+import joblib
+from joblib import load
 
 dados = pd.read_csv("https://raw.githubusercontent.com/afonsosr2/credit-scoring/main/df_clean.csv")
 
@@ -78,3 +83,44 @@ novo_cliente = [0,
                 input_tipo_moradia,
                 input_ocupacao,
                 0]
+
+
+# divisão dos dados de teste e treino
+def data_split(df, test_size):
+    SEED = 1561651
+    treino_df, teste_df = train_test_split(df, test_size = test_size, random_state = SEED)
+    return treino_df.reset_index(drop=True), teste_df.reset_index(drop=True)
+
+treino_df, teste_df = data_split(dados, 0.2)
+
+cliente_predict_df = pd.DataFrame([novo_cliente], columns = teste_df.columns)
+
+teste_novo_cliente = pd.concat([teste_df, cliente_predict_df], ignore_index=True)
+
+#Pipeline
+def pipeline_teste(df):
+
+    pipeline = Pipeline([
+        ('feature_dropper', DropFeatures()),
+        ('OneHotEncoding', OneHotEncodingNames()),
+        ('ordinal_feature', OrdinalFeature()),
+        ('min_max_scaler', MinMaxWithFeatNames()),
+    ])
+    df_pipeline = pipeline.fit_transform(df)
+    return df_pipeline
+
+#Aplicando a pipeline
+teste_novo_cliente = pipeline_teste(teste_novo_cliente)
+
+#retirando a coluna target
+cliente_pred = teste_novo_cliente.drop(['Mau'], axis=1)
+
+#Predições 
+if st.button('Enviar'):
+    model = joblib.load('modelo/xgb.joblib')
+    final_pred = model.predict(cliente_pred)
+    if final_pred[-1] == 0:
+        st.success('### Parabéns! Você teve o cartão de crédito aprovado')
+        st.balloons()
+    else:
+        st.error('### Infelizmente, não podemos liberar crédito para você agora!')
